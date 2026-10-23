@@ -3,3 +3,33 @@ __pycache__/
 .vscode/
 .idea/
 record.txt
+
+# Office 锁文件 / 临时文件（含 Windows 用户名）
+~$*
+*.tmp
+*.bak
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 本地环境
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 凭据（绝不提交）
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.token
+*.secret
+secrets/
+credentials*
