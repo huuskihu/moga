@@ -51,33 +51,59 @@ dw/dt     = V + a − b·w              # 慢变量（类比慢门控恢复）
 | `objective.py` | 多目标损失（向量 `[f_MSE, f_fire]` + 硬约束） |
 | `gd.py` | 梯度下降求解器（PyTorch Adam） |
 | `ga.py` | 手写 NSGA-II（不依赖 deap/scipy） |
-| `neural.py` | 可微神经代理（ProteoFlow / UMA 范式） |
+| `neural.py` | 可微代理（t→V 曲线回归）——**不反推参数，不能顶替 ODE 打分** |
+| `surrogate.py` | 参数→轨迹代理模型（θ→V，PCA 64 维 + MLP，15 万参数） |
+| `run_surrogate.py` | 代理实验驱动：保真度 / 误差归因 / GD×3 / 白盒 GD 对照 / NSGA-II / 外推 |
+| `exp_support.py` | 支撑实验：计时重复 5 轮 + 地形多切片 |
+| `exp_seeds.py` | 支撑实验：多随种子（GD 好初值 vs NSGA-II，5 组） |
+| `visualize_surrogate.py` | 保真度四联图 |
+| `make_matrix_fig.py` | 2×3 对照矩阵图 |
+| `make_landscape_fig.py` | 势垒 + 断崖地形图 |
 | `train.py` | 训练入口 / 启动器（代码与训练分离） |
-| `visualize.py` | 结果可视化 |
-| `make_report.py` | 一键生成三张分图 + PPTX 报告 |
-| `results/` | 本次实验输出（npz + 图） |
-| `T-World_GD_vs_GA_报告.pptx` | 8 页报告（通俗 × 专业双表述） |
-| `讲稿.md` / `讲稿.docx` | 配套讲稿 |
+| `visualize.py` | 原始三种方式的可视化 |
+| `make_report.py` | 一键生成三张分图 + 11 页 PPTX |
+| `results/` | 原始三种方式的输出（npz + 图） |
+| `results_surrogate/` | 代理实验输出（json + 图）；`artifacts.npz` / `surrogate.pt` 不入库，可重生成 |
+| `代理模型实验报告.md` | 代理实验完整报告，含「假设推翻」复盘 |
+| `双解释_逐句有据.md` | 11 节「通俗 / 专业 / 支撑」三行对照，每句带出处 |
+| `T-World_GD_vs_GA_报告.pptx` | 11 页报告 |
+| `讲稿.md` | 配套讲稿（按 11 页组织，含备课附录） |
 
 ## 快速开始
 
 ```bash
-pip install numpy matplotlib torch python-pptx   # python-pptx 仅生成报告需要
+pip install numpy scipy matplotlib torch python-pptx pillow
 
-python train.py                 # 完整训练（GD + GA + 神经代理，约 4 分钟）
-python train.py --quick         # 冒烟验证（几秒）
-python train.py --gd-init both  # 额外跑「好初值」对照（实测：收敛，并非 NaN）
-python visualize.py             # 出三合一可视化图
-python make_report.py           # 重新生成报告 PPT 与分图
+# 主线：GD / GA / 神经代理
+python train.py                  # 三种方式，约 4 分钟
+python train.py --quick          # 冒烟验证，几秒
+python train.py --gd-init both   # 额外跑「好初值」对照（实测：收敛，并非 NaN）
+python visualize.py              # 原始三合一可视化
+
+# 代理模型（θ→V）
+python run_surrogate.py --n 400 --epochs 3000 --gd-steps 600 --gen 80 --pop 100 --whitebox-gd
+python visualize_surrogate.py    # 保真度 / 误差归因 / GD / 外推 四联图
+python make_matrix_fig.py        # 2×3 对照矩阵
+python make_landscape_fig.py     # 势垒 + 断崖地形图
+
+# 支撑实验（复核用，README 里的数字都出自这里）
+python exp_support.py            # 计时重复 + 地形多切片，约 1 分钟
+python exp_seeds.py --n 5        # 多随种子，约 12 分钟
+
+# 报告
+python make_report.py            # 重新生成分图 + 11 页 PPT
 ```
 
 ## 依赖
 
 - Python 3.10+
-- `numpy`、`matplotlib`、`torch`
-- `python-pptx`（仅报告生成）
+- `numpy`、`scipy`（拉丁超立方、Spearman）、`matplotlib`、`torch`
+- `python-pptx`、`pillow`（仅报告生成需要）
 
 ## 结果解读
 
-`results/summary.json` 记录了各方法最终参数与目标值；`results/*.npz` 含完整轨迹与损失曲线。
-核心证据链详见 `T-World_GD_vs_GA_报告.pptx` 与 `讲稿.md`。
+- `results/summary.json`：原始三种方式的最终参数与目标值；`results/*.npz` 含轨迹与损失曲线。
+- `results_surrogate/summary_surrogate.json`：代理实验全部指标（保真度、误差归因、外推、2×3 对照）。
+- `results_surrogate/exp_support.json`：加速比重复测量、地形多切片。
+- `results_surrogate/seeds.json`：5 个随机种子的 GD / GA 复核。
+- 核心证据链：`T-World_GD_vs_GA_报告.pptx`、`代理模型实验报告.md`、`双解释_逐句有据.md`。
