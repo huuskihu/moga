@@ -33,3 +33,13 @@ venv/
 *.secret
 secrets/
 credentials*
+
+# 大体积中间产物（可由 run_surrogate.py / exp_*.py 重新生成）
+results_surrogate/artifacts.npz
+results_surrogate/surrogate.pt
+
+# 备份文件（含 .bak2 / .bak3）
+*.bak*
+
+# 一次性维护脚本（用于批量改文档，不属于可复现实验）
+patch*.py
