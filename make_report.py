@@ -65,7 +65,7 @@ ax.axhline(0.00043, color="#2ca02c", ls=":", lw=1.2,
 ax.set_yscale("log")
 ax.set_xlabel("epoch")
 ax.set_ylabel("loss (MSE, log)")
-ax.set_title("损失曲线：GD 对刚性白盒 ODE 卡死，对可微代理平滑收敛")
+ax.set_title("损失曲线：GD（坏初值）卡在 2.06 平台；遗传算法降到 4e-04")
 ax.legend(fontsize=8)
 fig.tight_layout()
 fig.savefig(os.path.join(RES, "fig_loss.png"), dpi=130)
@@ -88,6 +88,7 @@ plt.close(fig)
 print("三张分图已生成。")
 
 # ============ PPT ============
+from PIL import Image as PILImage
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -146,9 +147,13 @@ def content_slide(title, pairs):
 def image_slide(title, img_path, plain, prof):
     s = prs.slides.add_slide(prs.slide_layouts[5])  # Title Only
     set_title(s, title)
-    left = (prs.slide_width - Inches(11.0)) // 2
-    s.shapes.add_picture(img_path, left, Inches(1.5), width=Inches(11.0))
-    tb = s.shapes.add_textbox(Inches(0.8), Inches(6.0), Inches(11.7), Inches(1.2))
+    with PILImage.open(img_path) as im:
+        iw, ih = im.size
+    scale = min(Inches(12.0) / iw, Inches(4.95) / ih)
+    w, h = int(iw * scale), int(ih * scale)
+    s.shapes.add_picture(img_path, (prs.slide_width - w) // 2, Inches(1.25),
+                         width=w, height=h)
+    tb = s.shapes.add_textbox(Inches(0.8), Inches(6.32), Inches(11.7), Inches(0.95))
     tf = tb.text_frame
     tf.word_wrap = True
     p0 = tf.paragraphs[0]
@@ -159,6 +164,27 @@ def image_slide(title, img_path, plain, prof):
     p1.text = "专业 · " + prof
     p1.font.size = Pt(12)
     p1.font.color.rgb = PRO_C
+    return s
+
+
+def figure_slide(title, img_path, caption, max_w=12.3, max_h=5.05, top=1.22):
+    """整幅插图页：按比例装进 (max_w x max_h) 的框内，底部一行说明。
+    与 image_slide 的区别是同时受宽高约束，避免 16:9 版面上把图撑出页面。"""
+    s = prs.slides.add_slide(prs.slide_layouts[5])  # Title Only
+    set_title(s, title)
+    with PILImage.open(img_path) as im:
+        iw, ih = im.size
+    scale = min(Inches(max_w) / iw, Inches(max_h) / ih)
+    w, h = int(iw * scale), int(ih * scale)
+    s.shapes.add_picture(img_path, (prs.slide_width - w) // 2, Inches(top),
+                         width=w, height=h)
+    tb = s.shapes.add_textbox(Inches(0.75), Inches(6.5), Inches(11.9), Inches(0.8))
+    tf = tb.text_frame
+    tf.word_wrap = True
+    pp = tf.paragraphs[0]
+    pp.text = caption
+    pp.font.size = Pt(14)
+    pp.font.color.rgb = PLAIN_C
     return s
 
 
@@ -180,7 +206,7 @@ content_slide("问题：两种 AI4Science 模型，两种训练范式", [
     ("两种 AI 模型都在“让计算机自动拟合数据”，只是调参方式完全不同。",
      "二者均属数据驱动的参数估计任务，却分别采用梯度反向传播与多目标进化优化两种优化范式。"),
     ("T-World 是把心肌细胞写成“每个参数都看得懂含义”的物理方程组，所以用遗传算法来调参。",
-     "T-World 为机理驱动的白盒常微分方程（ODE）模型，参数具生理学可解释性，故采用多目标遗传算法（MOGA）标定。"),
+     "T-World 为白盒 ODE 模型，参数具生理学含义；论文采用多目标遗传算法（MOGA）标定组分参数，模型以 Matlab / CellML 发布，也可在 Python 运行。"),
     ("ProteoFlow / UMA 把规律装进“光滑可导的神经网络”，所以能直接求梯度。",
      "ProteoFlow / UMA 采用可微神经网络参数化（流匹配速度场 / 等变图网络），支持端到端基于梯度的训练。"),
     ("核心疑问：同样拟合数据，凭啥一个用进化、一个用梯度？",
@@ -198,15 +224,15 @@ content_slide("方法：一个“麻雀虽小、五脏俱全”的替身模型",
 ])
 
 # --- 对比设计 ---
-content_slide("对比设计：只换“模型长相”，其余全不动", [
-    ("做一次控制变量：数据、优化器都不动，只换模型的参数化方式。",
-     "以参数化方式为唯一控制变量，保持数据与优化器不变，进行受控对照实验。"),
-    ("路线①：硬要用梯度下降的白盒 ODE（T-World 的反例）。",
-     "方案①：GD + 白盒 ODE——对应“若 T-World 坚持梯度下降”的反事实情形。"),
-    ("路线②：进化算法 + 白盒 ODE（T-World 实际做法）。",
-     "方案②：MOGA + 白盒 ODE——对应 T-World 实际采用的标定方式。"),
-    ("路线③：梯度下降 + 可微神经代理（ProteoFlow/UMA 范式）。",
-     "方案③：GD + 可微神经代理——对应 ProteoFlow / UMA 的可微参数化范式。"),
+content_slide("第一轮设计：三条路线，但缺一格", [
+    ("先按最顺的思路跑三条路线，后面会看到它缺了整整一格。",
+     "初版设计：固定数据，比较三种「优化器 × 参数化」组合；该设计缺少「初值」这一维度，补跑后才暴露。"),
+    ("路线①：梯度下降配白盒 ODE——T-World 若硬要用梯度的反事实。",
+     "方案①：GD + 白盒 ODE（仅坏初值）——对应“若 T-World 坚持梯度下降”的反事实情形。"),
+    ("路线②：多目标遗传算法配白盒 ODE——T-World 的实际做法。",
+     "方案②：MOGA + 白盒 ODE——对应 T-World 论文采用的标定方式。"),
+    ("路线③：梯度下降配可微代理——但它只拟合曲线，不反推参数。",
+     "方案③：GD + 可微代理（t→V 曲线回归）——该臂不输出参数 θ，与①②不是同一道题，不能直接对比。"),
 ])
 
 # --- 结果图1 ---
@@ -227,18 +253,44 @@ image_slide("结果三：遗传算法收敛",
             "几十代就找到答案，100% 的候选都“发对了次数”。",
             "MOGA 在数十代内收敛至 MSE≈0.0004，末代种群 100% 满足发放次数约束（f_fire=0）。")
 
+# --- 交叉验证矩阵（2x3） ---
+figure_slide("初值是决定性变量：GD vs GA 的完整交叉验证",
+             os.path.join(BASE, "results_surrogate", "fig_matrix.png"),
+             "同一个 Adam、同一份数据：好初值 3.95e-04（5 个种子全部优于 GA 的 4.09e-04），坏初值直接不可行。"
+             "GD 极度依赖初值，而不是被刚性或不可导性一票否决。")
+
+# --- 优化景观 ---
+figure_slide("为什么坏初值会死？——优化景观里的势垒与断崖",
+             os.path.join(BASE, "results_surrogate", "fig_landscape.png"),
+             "代理模型磨平了可导性，却磨不掉多区制带来的非凸性：势垒 +12%~27%、断崖 6~21 倍（3 条切片）。"
+             "GA 靠变异跨过去，GD 只能滚回坑里。")
+
 # --- 结论 ---
-content_slide("结论：差异在“参数化”，不在“优化器”", [
-    ("工具没坏——梯度下降对可微的神经代理，0.5 秒就收敛好了。",
-     "梯度下降本身有效：对可微神经代理，损失平滑收敛（MSE 0.06，0.5s），证明失效并非源于优化器。"),
-    ("是模型“长得太硬”，让梯度下降使不上劲：卡在错误放电，还守不住参数下界。",
-     "刚性白盒 ODE 的病态条件数与非光滑解使 GD 陷入局部极小，并逸出可行域（eps 略低于生理下界 0.01）。"),
+content_slide("结论：决定成败的是“初值”，不是“优化器”", [
+    ("梯度下降没坏——同一个优化器换个好初值，121 秒就收敛到 4.0e-04。",
+     "白盒 ODE + GD（好初值）：3.06e-3 → 4.00e-04，无 NaN、无越界；5 个种子复核 3.95e-04±4.8e-6，NSGA-II 为 4.09e-04±1.4e-5，5/5 GD 更优但仅差 3.4%。"),
+    ("坏初值才会让它卡住：卡在错误放电，还滑出了参数下界。",
+     "坏初值下 GD 落在「28 次发放」的局部极小（MSE 2.06），并滑出下界至 eps=0.00675；根因是初值，不是刚性。"),
     ("进化算法不靠导数，稳，找回真值。",
      "MOGA 不依赖梯度，对刚性、阈值与不可导目标鲁棒，稳健恢复真值（MSE 0.0004）。"),
-    ("给你选型一句话：要保真可解释 → 用进化；要端到端又快 → 用可微 + 梯度。",
-     "工程准则：机理保真优先时选进化优化；端到端可训练性优先时选可微参数化 + 梯度下降。"),
+    ("选型一句话：给得出初值就用梯度，给不出就用进化。",
+     "工程准则：有可靠初值 → 梯度下降（快且准）；无初值 → 进化优化（稳但慢）；单次仿真昂贵 → 训练代理模型作内循环。"),
 ])
 
-out = os.path.join(BASE, "T-World_GD_vs_GA_报告.pptx")
+# --- 附录：假设的推翻与修正 ---
+content_slide("附录：实验假设的推翻与修正", [
+    ("我们原来的假设：刚性和阶跃惩罚会让梯度下降直接爆炸。",
+     "初始假设：刚性（1/eps）与 f_fire 阶跃项使 GD 梯度爆炸、无法收敛——该假设写在 config.py 注释里，未经验证。"),
+    ("第一处错：那个阶跃项根本没进梯度下降的损失。",
+     "复核①：gd.py 仅优化 MSE，f_fire 从未进入损失函数；GD 根本没有遇到不可导项。"),
+    ("第二处错：损失是平滑收敛的，没有 NaN，参数也一直是正的。",
+     "复核②：100 轮 loss 2.77→2.06 单调下降（仅 4 轮微升），无 NaN/inf；eps 最小 0.00675，恒为正。"),
+    ("补上缺的那一格，结论整个反过来了。",
+     "复核③：补跑 GD + 好初值，121 s 收敛至 4.00e-04，优于 NSGA-II（4.32e-4）；决定性变量是初值。"),
+    ("所以这一页不是辩解，是我们实验设计的一部分。",
+     "修正后结论：多区制导致的非凸景观才是主因；迭代复核与真实 ODE 复核应作为流程环节固定下来。"),
+])
+
+out = os.environ.get("DECK_OUT") or os.path.join(BASE, "T-World_GD_vs_GA_报告.pptx")
 prs.save(out)
 print("PPT 已生成：", out)
